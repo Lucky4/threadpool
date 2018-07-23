@@ -11,11 +11,14 @@ except ImportError:
     import queue as Queue   # Python3
 
 class ThreadPool(object):
-    def __init__(self, num_workers=10):
-        self.num_workers = num_workers
-        self.job_queue = Queue.Queue()
-        self.result_queue = Queue.Queue()
+    def __init__(self):
+        self.num_workers = 10
+        self.max_thread_num = 50
+        self.thread_worker_high_ratio = 3
+        self.thread_worker_low_ratio = 1
         self.workers = []
+        self.job_queue = Queue.Queue()
+        self.result_queue = Queue.Queue() # yet to be done
 
         # init thread pool
         self.init_pool()
@@ -47,8 +50,19 @@ class ThreadPool(object):
                 del_thread.kill = True
 
     def destroy_pool(self):
-        for i in self.workers:
-            i.setDaemon(True)
+        os._exit(0)
+
+    def run(self):
+        while True:
+            workers_length = len(self.workers)
+            thread_worker_ratio = self.job_queue.qsize() / workers_length
+
+            if thread_worker_ratio > self.thread_worker_high_ratio:
+                if workers_length < self.max_thread_num: self.add_workers(1)
+            elif thread_worker_ratio < self.thread_worker_low_ratio:
+                if workers_length > self.num_workers: self.dismiss_workers(1)
+            else:
+                continue
 
 
 class WorkerThread(threading.Thread):
@@ -74,7 +88,7 @@ class WorkerThread(threading.Thread):
             self.res_queue.put(job)
             self.job_queue.task_done()
 
-            if not self.is_core:    # 如果是非核心线程则结束线程
+            if not self.is_core:    # 如果是非核心线程执行完任务后则结束线程
                 return True
 
 class ThreadJob(object):
@@ -100,28 +114,12 @@ if __name__ == '__main__':
         print 'Thread id is %s and params are x=%s, y=%s, testx=%s, testy=%s\n' % \
             (threading.current_thread().ident, x, y, testx, testy)
 
-    main = ThreadPool(2)
-    for i in range(5):
+    main = ThreadPool()
+    for i in range(10):
         args = ('formalx', 'formaly')
         kwargs = {'testx': 'keywordx', 'testy': 'keywordy'}
         job = ThreadJob(do_something, args, kwargs)
         main.add_job(job)
-
-    time.sleep(5)
-
-    main.add_workers(20)
-    for i in range(5):
-        args = ('formalx', 'formaly')
-        kwargs = {'testx': 'keywordx', 'testy': 'keywordy'}
-        job = ThreadJob(do_something, args, kwargs)
-        main.add_job(job)
-
-    time.sleep(5)
     
-    # main.dismiss_workers(5)
-    main.dismiss_workers(100)
-    for i in range(5):
-        args = ('formalx', 'formaly')
-        kwargs = {'testx': 'keywordx', 'testy': 'keywordy'}
-        job = ThreadJob(do_something, args, kwargs)
-        main.add_job(job)
+    time.sleep(10)
+    main.destroy_pool()
