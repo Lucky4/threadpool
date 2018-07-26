@@ -12,10 +12,11 @@ except ImportError:
 
 class ThreadPool(object):
     def __init__(self):
-        self.num_workers = 10
-        self.max_thread_num = 50
-        self.thread_worker_high_ratio = 3
-        self.thread_worker_low_ratio = 1
+        self.num_workers = 10               # 线程池默认核心线程数
+        self.max_thread_num = 50            # 线程池最大线程数
+        self.thread_worker_high_ratio = 3   # 线程数与任务峰值比例
+        self.thread_worker_low_ratio = 1    # 任务数与线程数低谷比例
+        self.manage_adjust_interval = 5     # 管理线程动态调节时间间隔（s）
         self.workers = []
         self.job_queue = Queue.Queue()
         self.result_queue = Queue.Queue() # yet to be done
@@ -50,19 +51,22 @@ class ThreadPool(object):
                 del_thread.kill = True
 
     def destroy_pool(self):
+        self.job_queue.join()
         os._exit(0)
 
-    def run(self):
-        while True:
-            workers_length = len(self.workers)
-            thread_worker_ratio = self.job_queue.qsize() / workers_length
+    def check(self):
+        print '------Checking the thread worker ratio------'
+        workers_length = len(self.workers)
+        thread_worker_ratio = self.job_queue.qsize() / workers_length
 
-            if thread_worker_ratio > self.thread_worker_high_ratio:
-                if workers_length < self.max_thread_num: self.add_workers(1)
-            elif thread_worker_ratio < self.thread_worker_low_ratio:
-                if workers_length > self.num_workers: self.dismiss_workers(1)
-            else:
-                continue
+        if thread_worker_ratio > self.thread_worker_high_ratio:
+            if workers_length < self.max_thread_num:
+                print 'Thread worker high ratio, add one thread.'
+                self.add_workers(1)
+        elif thread_worker_ratio < self.thread_worker_low_ratio:
+            if workers_length > self.num_workers:
+                print 'Thread worker low ratio, delete one thread.'
+                self.dismiss_workers(1)
 
 
 class WorkerThread(threading.Thread):
@@ -91,6 +95,7 @@ class WorkerThread(threading.Thread):
             if not self.is_core:    # 如果是非核心线程执行完任务后则结束线程
                 return True
 
+
 class ThreadJob(object):
     def __init__(self, exec_func, args=None, kwds=None, callback=None):
         self.exec_func = exec_func
@@ -115,11 +120,15 @@ if __name__ == '__main__':
             (threading.current_thread().ident, x, y, testx, testy)
 
     main = ThreadPool()
-    for i in range(10):
-        args = ('formalx', 'formaly')
-        kwargs = {'testx': 'keywordx', 'testy': 'keywordy'}
-        job = ThreadJob(do_something, args, kwargs)
-        main.add_job(job)
-    
-    time.sleep(10)
+
+    # 模拟任务数量增加，线程池动态的增加线程
+    while True:
+        time.sleep(1)
+        for i in range(400):
+            args = ('formalx', 'formaly')
+            kwargs = {'testx': 'keywordx', 'testy': 'keywordy'}
+            job = ThreadJob(do_something, args, kwargs)
+            main.add_job(job)
+        main.check()
+
     main.destroy_pool()
