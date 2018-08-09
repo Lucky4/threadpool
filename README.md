@@ -1,2 +1,2 @@
-# threadpool
-一个简单的线程池。
+## 参考
+https://www.ibm.com/developerworks/cn/java/l-threadPool/
